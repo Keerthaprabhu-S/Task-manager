@@ -7,6 +7,9 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .auth import set_auth_cookie
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
@@ -22,22 +25,48 @@ class _PublicAuthView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth"
 
+
 class RegisterView(_PublicAuthView):
     def post(self, request):
-        s = RegisterSerializer(data=request.data)
-        s.is_valid(raise_exception=True)
-        user = s.save()
-        return set_auth_cookie(Response(UserSerializer(user).data, status=status.HTTP_201_CREATED), user)
+        try:
+            s = RegisterSerializer(data=request.data)
+            s.is_valid(raise_exception=True)
+            user = s.save()
+            response = Response(
+                UserSerializer(user).data,
+                status=status.HTTP_201_CREATED,
+            )
+            return set_auth_cookie(response, user)
+        except Exception:
+            logger.exception("Unexpected error in RegisterView")
+            raise
+
 
 class LoginView(_PublicAuthView):
     def post(self, request):
-        s = LoginSerializer(data=request.data)
-        s.is_valid(raise_exception=True)
-        user = authenticate(username=s.validated_data["username"], password=s.validated_data["password"])
-        if not user:
-            return Response({"error": {"status": 401, "message": "Invalid username or password.", "details": None}},
-                            status=status.HTTP_401_UNAUTHORIZED)
-        return set_auth_cookie(Response(UserSerializer(user).data), user)
+        try:
+            s = LoginSerializer(data=request.data)
+            s.is_valid(raise_exception=True)
+            user = authenticate(
+                username=s.validated_data["username"],
+                password=s.validated_data["password"],
+            )
+            if not user:
+                return Response(
+                    {
+                        "error": {
+                            "status": 401,
+                            "message": "Invalid username or password.",
+                            "details": None,
+                        }
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            response = Response(UserSerializer(user).data)
+            return set_auth_cookie(response, user)
+        except Exception:
+            logger.exception("Unexpected error in LoginView")
+            raise
 
 class LogoutView(APIView):
     def post(self, request):
